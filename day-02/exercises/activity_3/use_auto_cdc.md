@@ -9,7 +9,7 @@ customer orders. The data is available as **date-partitioned Parquet files**
 The operational context is as follows:
 
 - The **2016 and 2017** historical data is available upfront in the Volume
-- A new year of data (**2028**) will be dropped into the Volume at a later stage,
+- A new year of data (**2018**) will be dropped into the Volume at a later stage,
   with **no changes to the pipeline code**
 - The pipeline will be **re-run regularly** (daily trigger or manual) — this must never
   produce duplicate rows in the target tables
@@ -46,7 +46,7 @@ The partition columns `year`, `month`, `day` are automatically inferred from the
 structure at ingestion time — no extra configuration needed.
 
 
-> The 2028 data will be added in a second phase — see Step 4.
+> The 2018 data will be added in a second phase — see Step 4.
 
 ---
 
@@ -107,15 +107,15 @@ Verify that the row counts in both tables are unchanged.
 
 ---
 
-### Step 4 — Add 2028 data and re-run
+### Step 4 — Add 2018 data and re-run
 
 Drop the new year's files into the Volume.
 Re-run the pipeline **without modifying any SQL file**:
 
 Verify:
-- Only the new 2028 rows were appended to `brz_orders_parquet`
+- Only the new 2018 rows were appended to `brz_orders_parquet`
 - The 2016/2017 rows in `slv_orders_parquet` are unchanged
-- The new 2028 `order_id` values have been correctly inserted into Silver
+- The new 2018 `order_id` values have been correctly inserted into Silver
 
 ---
 
@@ -130,7 +130,7 @@ Verify:
 - [ ] **After re-running on the same files**, the Bronze row count is identical to the
       first run — Auto Loader detected that the 2016/2017 files were already recorded
       in its checkpoint and skipped them
-- [ ] **After dropping the 2028 files**, only the new rows appear in Bronze —
+- [ ] **After dropping the 2018 files**, only the new rows appear in Bronze —
       proving the checkpoint tracks only previously unseen files
 - [ ] The partition columns `year`, `month`, `day` are present in the table
       with no extra configuration (automatic Hive-style partition discovery)
@@ -142,7 +142,7 @@ Verify:
       by the CDC key, not by manual deduplication downstream
 - [ ] **After a replay on the same files**, no duplicate rows appear in Silver —
       Auto CDC resolved the conflict via `SEQUENCE BY` and wrote nothing new
-- [ ] **After dropping the 2028 data**, only the new `order_id` values are inserted
+- [ ] **After dropping the 2018 data**, only the new `order_id` values are inserted
       into Silver — the existing 2016/2017 rows are untouched
 - [ ] The derived columns `delivery_days` and `is_on_time` are correctly computed
       (transformations applied in the Temporary View before the CDC flow)
@@ -151,7 +151,7 @@ Verify:
 ### Overall architecture
 
 - [ ] The pipeline SQL code was **not modified** between the first run, the replay,
-      and the run with 2028 data — the pipeline is generic by design, not by
+      and the run with 2018 data — the pipeline is generic by design, not by
       configuration
 - [ ] There is no `WHERE year IN (2016, 2017)` or any hardcoded time filter
       in the SQL files
