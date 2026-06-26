@@ -1,5 +1,4 @@
 # Databricks notebook source
-
 # MAGIC %md
 # MAGIC # Day 1 — Exercise 01: Python Basics
 # MAGIC
@@ -63,7 +62,18 @@ print("Description for 'shipped':", status_descriptions["shipped"])
 #         1. Print the full dict.
 #         2. Print the number of states using len().
 
-# YOUR CODE HERE
+orders_by_state = {
+    "SP": 1,
+    "RJ": 2,
+    "MG": 3,
+    "RS": 4,
+    "BA": 5,
+}
+
+
+
+print(orders_by_state)
+print(len(orders_by_state))
 
 
 # COMMAND ----------
@@ -118,8 +128,25 @@ print(f"Delivery took {days} days")
 #       1, 3, and 5, printing each result in the format:
 #           "Score 1 -> negative"
 
-# YOUR CODE HERE
+from datetime import datetime
+def categorize_review_score(score):
+    if score == 1 or score == 2:
+        return "negative"
+    elif score == 3:
+        return "neutral"
+    elif score == 4 or score ==5:
+        return "positive"
+    
+for i in [1,3,5]:
+    #print("",categorize_review_score(i)) 
+    #f is for formatting
+    print(f"Score {i} -> {categorize_review_score(i)}")
+    print("S", i, "->", categorize_review_score(i))
 
+
+print(f"Score 1 -> {categorize_review_score(1)}")
+i=1
+print("S", i, "->", categorize_review_score(i))
 
 # COMMAND ----------
 
