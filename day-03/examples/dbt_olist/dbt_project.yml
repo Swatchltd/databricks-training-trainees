@@ -16,6 +16,9 @@ clean-targets: ["target", "dbt_packages"]
 # Each layer lands in its own schema; staging = views, marts = Delta tables.
 models:
   dbt_olist:
+    +persist_docs:
+      relation: true   # push model description -> Unity Catalog table COMMENT
+      columns: true    # push column descriptions -> UC column COMMENTs
     staging:
       +materialized: view
       +schema: staging
