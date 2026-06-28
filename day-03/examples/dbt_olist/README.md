@@ -18,6 +18,10 @@ snapshots/        orders_snapshot (SCD2 on order_status)
 Layout in every environment: `<catalog>.{staging,intermediate,marts,seeds,snapshots}.*`,
 sources from `<catalog>.landing.*`. Only the **catalog** changes per environment (see §3).
 
+> dbt merges all YAML under `models/`, so with multiple source systems you'd split sources
+> one-file-per-source — `_<source>__sources.yml` (+ `_<source>__models.yml`, `stg_<source>__<entity>.sql`);
+> our single `olist_landing` source uses one `_sources.yml`.
+
 ---
 
 ## 1. Environment (uv)
@@ -217,3 +221,29 @@ Two patterns (full story on Day 4):
 sources + freshness · staging / intermediate / marts layers · `ref()` / `source()` ·
 view vs table vs incremental (merge on Delta) · surrogate keys · seeds · generic + custom-generic + singular tests
 + `dbt_expectations` · macros (incl. `generate_schema_name`) · snapshots (SCD2) · exposures · docs.
+
+## Code quality
+
+All tooling config lives in `pyproject.toml` (single source of truth); CI and
+pre-commit just invoke the tools.
+
+**SQL** — [SQLFluff](https://sqlfluff.com) lints/gates and [sqlfmt](https://sqlfmt.com) formats:
+
+```bash
+uv sync                       # installs the dev tools from pyproject
+uv run sqlfluff lint models   # lint (gate)
+uv run sqlfluff fix models    # auto-fix lint violations
+uv run sqlfmt .               # format SQL in place
+```
+
+SQLFluff uses the **dbt templater** so `dbt_utils.*`, `dbt_expectations.*` and the
+custom macros resolve. Run `uv run dbt deps` once to vendor the dbt packages.
+
+**Pre-commit** — run the same checks on every commit:
+
+```bash
+uv run pre-commit install     # enable the git hooks (one-time)
+```
+
+Config: `[tool.sqlfluff.*]` / `[tool.sqlfmt]` in `pyproject.toml`; ignore paths in
+`.sqlfluffignore`.

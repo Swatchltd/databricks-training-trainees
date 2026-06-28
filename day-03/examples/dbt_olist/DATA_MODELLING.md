@@ -64,6 +64,12 @@ sake (see §5, `dim_products`).
 Kimball star; `gld_` are gold business aggregates built on top of the star. Materialized as
 **Delta tables**. Named by business concept, not by source.
 
+**Multiple source systems.** dbt merges *all* YAML under `models/`, so sources don't have to live
+in one file. With more than one source system you split them **one file per source system** —
+`_<source>__sources.yml` (paired with `_<source>__models.yml` and `stg_<source>__<entity>.sql`),
+keeping a single source's tables together. Our single `olist_landing` source needs only one
+`_sources.yml`, so we keep the simple form.
+
 ---
 
 ## 3. Materialization decisions, layer by layer (and *why*)
@@ -334,3 +340,23 @@ order and is a **table** because two marts reuse it.
 `dbt docs generate && dbt docs serve` renders this DAG interactively (model- and column-level);
 `dbt build` is the executable proof — it runs every test above in dependency order and stops the
 moment a key assumption breaks.
+
+---
+
+## 8. Testing strategy by layer
+
+Tests are placed where the thing they assert is *true*, which mostly tracks the layer:
+
+- **Staging** carries the **structural + source-domain** tests: `not_null` / `unique` on keys,
+  `relationships` (FK) between staged tables, and `accepted_values` for closed source domains
+  (`payment_type`, `order_status`, and a review `review_score ∈ 1–5`). These describe the raw
+  source as ingested, so they belong next to the staging models.
+- **Intermediate / marts** carry the **distribution and business-value** expectations — the
+  `dbt_expectations` checks (e.g. `expect_column_values_to_be_between` on percentages `0–100`,
+  non-negative revenue). Those values don't exist until a model *produces* them, so the test lives
+  where the value is created.
+
+A nuance worth stating explicitly for trainees: **`dbt_expectations` is allowed in staging** when
+it expresses a genuine *source-domain* constraint (a numeric range that's true of the raw column,
+say). The "expectations live downstream" split is a **convention that keeps tests near the value
+they describe — not a hard rule.** Put the test where the assertion is meaningful.

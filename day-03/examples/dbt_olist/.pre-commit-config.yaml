@@ -1,0 +1,23 @@
+# Pre-commit — SQL code quality for this dbt project.
+# LOCAL hooks run the tools via `uv run`, so they read config from pyproject.toml
+# (single source of truth). Enable once with:  uv run pre-commit install
+#
+# Note: SQLFluff uses the dbt templater, so it needs the dbt env (e.g. OLIST_DIR /
+# DATABRICKS_* from your .env) and vendored dbt deps (`uv run dbt deps`) to compile.
+repos:
+  - repo: local
+    hooks:
+      - id: sqlfluff-lint
+        name: sqlfluff lint (config in pyproject.toml)
+        entry: uv run sqlfluff lint
+        language: system
+        types: [sql]
+        pass_filenames: true
+        require_serial: true
+
+      - id: sqlfmt
+        name: sqlfmt (config in pyproject.toml)
+        entry: uv run sqlfmt
+        language: system
+        types: [sql]
+        pass_filenames: true

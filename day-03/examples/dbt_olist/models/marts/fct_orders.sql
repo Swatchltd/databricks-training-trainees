@@ -11,7 +11,23 @@ with base as (
 )
 select
     {{ dbt_utils.generate_surrogate_key(['order_id']) }} as order_sk,
-    *
+    order_id,
+    customer_id,
+    customer_unique_id,
+    customer_state,
+    customer_city,
+    order_status,
+    order_purchase_ts,
+    delivered_at,
+    estimated_delivery_at,
+    item_count,
+    items_total,
+    freight_total,
+    order_total,
+    total_paid,
+    max_installments,
+    days_to_deliver,
+    is_late
 from base
 {% if is_incremental() %}
   -- only process orders newer than the latest already loaded
