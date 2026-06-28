@@ -10,13 +10,12 @@ dependencies = [
 ]
 
 # Dev-only code-quality tooling. Install everything with:  uv sync
-# All tool config lives in this pyproject.toml (CI/pre-commit just invoke the tools).
+# All tool config lives in this pyproject.toml (CI just invokes the tools).
 [dependency-groups]
 dev = [
     "sqlfluff>=3",
     "shandy-sqlfmt",
     "sqlfluff-templater-dbt",
-    "pre-commit>=3.7",
 ]
 
 [tool.uv]

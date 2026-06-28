@@ -224,8 +224,8 @@ view vs table vs incremental (merge on Delta) · surrogate keys · seeds · gene
 
 ## Code quality
 
-All tooling config lives in `pyproject.toml` (single source of truth); CI and
-pre-commit just invoke the tools.
+All tooling config lives in `pyproject.toml` (single source of truth); CI runs the same
+checks on every PR.
 
 **SQL** — [SQLFluff](https://sqlfluff.com) lints/gates and [sqlfmt](https://sqlfmt.com) formats:
 
@@ -238,12 +238,6 @@ uv run sqlfmt .               # format SQL in place
 
 SQLFluff uses the **dbt templater** so `dbt_utils.*`, `dbt_expectations.*` and the
 custom macros resolve. Run `uv run dbt deps` once to vendor the dbt packages.
-
-**Pre-commit** — run the same checks on every commit:
-
-```bash
-uv run pre-commit install     # enable the git hooks (one-time)
-```
 
 Config: `[tool.sqlfluff.*]` / `[tool.sqlfmt]` in `pyproject.toml`; ignore paths in
 `.sqlfluffignore`.
