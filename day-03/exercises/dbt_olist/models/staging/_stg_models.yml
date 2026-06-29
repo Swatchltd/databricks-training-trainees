@@ -1,0 +1,63 @@
+version: 2
+models:
+  - name: stg_orders
+    description: "Cleaned orders, one row per order; timestamps cast to TIMESTAMP."
+    columns:
+      - name: order_id
+        description: "Unique order identifier."
+        tests: [not_null, unique]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: order_status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['delivered','shipped','processing','canceled','unavailable','invoiced','approved','created']
+  - name: stg_order_items
+    description: "Order line items, one row per (order_id, order_item_id)."
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: price
+        tests: [not_null]
+  - name: stg_order_payments
+    description: "Payments, one row per (order_id, payment_sequential). Rename/cast only; the roll-up to order grain happens in int_order_payments."
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: payment_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['credit_card','boleto','voucher','debit_card','not_defined']
+      - name: payment_value
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['order_id','payment_sequential']
+  - name: stg_customers
+    description: "Customers. customer_id is per-order; customer_unique_id is the real customer."
+    columns:
+      - name: customer_id
+        tests: [not_null, unique]
+  - name: stg_products
+    description: "Product catalogue (category in Portuguese)."
+    columns:
+      - name: product_id
+        tests: [not_null, unique]
