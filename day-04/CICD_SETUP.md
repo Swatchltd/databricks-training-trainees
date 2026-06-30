@@ -104,3 +104,5 @@ uv run sqlfmt --check .
 
 Sources: [Authenticate with OAuth M2M (service principal)](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m) ·
 [GitHub Actions CI/CD for Databricks](https://docs.databricks.com/aws/en/dev-tools/ci-cd/github).
+
+Please follow this readme.md to learn CI/CD.
