@@ -1,0 +1,95 @@
+[project]
+name = "dbt-olist-bundle"
+version = "0.1.0"
+description = "dbt project for olist dataset"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "dbt-core>=1.11.11",
+    "dbt-databricks>=1.12.1",
+]
+
+# Dev-only code-quality tooling. Install everything with:  uv sync
+# All tool config lives in this pyproject.toml (CI just invokes the tools).
+[dependency-groups]
+dev = [
+    "sqlfluff>=3",
+    "shandy-sqlfmt",
+    "sqlfluff-templater-dbt",
+]
+
+[tool.uv]
+package = false   # dbt project is not a Python package — do not build a wheel
+
+# ---------------------------------------------------------------------------
+# SQLFluff — SQL linter / gate. Config lives here; ignore paths in .sqlfluffignore.
+# Uses the dbt templater so dbt_utils.* / dbt_expectations.* and the custom macros
+# (cast_timestamp, generate_category_label) resolve. dbt deps are vendored in
+# dbt_packages/ (run `uv run dbt deps` once if missing). The Databricks profile only
+# needs to PARSE (no live connection) to compile models, so dummy DATABRICKS_* env
+# vars are enough in CI.
+# ---------------------------------------------------------------------------
+[tool.sqlfluff.core]
+templater = "dbt"
+dialect = "databricks"
+max_line_length = 100
+# sqlfmt owns ALL layout/whitespace, so we exclude the entire `layout` rule GROUP — that's every
+# LT* rule (LT01–LT14 and any future ones), in one keyword. This is what stops sqlfluff and sqlfmt
+# fighting: format with sqlfmt, then lint with sqlfluff, and sqlfluff never re-flags sqlfmt's output
+# (e.g. an inline `where` on one line). sqlfluff is left to enforce only *semantic* rules
+# (references, ambiguity, aliasing, structure). Casing/commas are also aligned to sqlfmt below.
+#
+# Plus a few NON-layout rules disabled for the deliberate teaching house style:
+#   AL01 - joins use implicit table aliases ("orders o"), taught on purpose.
+#   AM05 - joins spelled "left join" / "inner join" (not force-qualified).
+#   RF04 - column names like `zip_code` shadow no keywords we care about here.
+#   ST06 - select-target ordering is pedagogical (ids first, then attributes).
+#   RF02 - the incremental "where col > (select max(col) ...)" reads an unqualified col on purpose.
+#   ST02 - "case when ... then true else false end" kept for readability over COALESCE.
+#   AM03 - window ORDER BY mixes a desc tiebreaker with plain cols intentionally.
+exclude_rules = "layout, AL01, AM05, RF04, ST06, RF02, ST02, AM03"
+
+[tool.sqlfluff.indentation]
+indent_unit = "space"
+tab_space_size = 4
+
+[tool.sqlfluff.templater.dbt]
+project_dir = "."
+profiles_dir = "."
+profile = "dbt_olist_bundle"
+target = "local"
+
+# --- House style ---
+# Keywords / functions / types / identifiers lower-case (matches every model in the repo).
+[tool.sqlfluff.rules.capitalisation.keywords]
+capitalisation_policy = "lower"
+
+[tool.sqlfluff.rules.capitalisation.identifiers]
+extended_capitalisation_policy = "lower"
+
+[tool.sqlfluff.rules.capitalisation.functions]
+extended_capitalisation_policy = "lower"
+
+[tool.sqlfluff.rules.capitalisation.literals]
+capitalisation_policy = "lower"
+
+[tool.sqlfluff.rules.capitalisation.types]
+extended_capitalisation_policy = "lower"
+
+# Trailing commas, as written in the models.
+[tool.sqlfluff.rules.layout.commas]
+line_position = "trailing"
+
+# Long macro calls (dbt_utils.star, generate_surrogate_key) are legitimately long;
+# comments can also run long — don't force-wrap them.
+[tool.sqlfluff.rules.layout.long_lines]
+ignore_comment_lines = true
+ignore_comment_clauses = true
+
+# ---------------------------------------------------------------------------
+# sqlfmt — opinionated SQL formatter (run with `uv run sqlfmt .` to apply).
+# ---------------------------------------------------------------------------
+[tool.sqlfmt]
+line_length = 100
+# Skip generated / vendored SQL (sqlfmt doesn't read .sqlfluffignore).
+exclude = ["target/**/*.sql", "dbt_packages/**/*.sql", ".venv/**/*.sql", "logs/**/*.sql", "src/tests/generic/**/*.sql"]

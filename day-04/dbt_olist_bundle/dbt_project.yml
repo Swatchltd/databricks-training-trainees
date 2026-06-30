@@ -1,0 +1,39 @@
+name: 'dbt_olist_bundle'
+version: '1.0.0'
+config-version: 2
+profile: 'dbt_olist_bundle'
+
+model-paths: ["src/models"]
+macro-paths: ["src/macros"]
+test-paths:  ["src/tests"]
+seed-paths:  ["src/seeds"]
+snapshot-paths: ["src/snapshots"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Catalog comes from the active target in profiles.yml (local/dev/prod).
+# instead of hardcoding a catalog, we use the +catalog config to set the catalog per model folder.
+# Each layer lands in its own schema; staging = views, marts = Delta tables.
+models:
+  dbt_olist_bundle:
+    +persist_docs:
+      relation: true   # push model description -> Unity Catalog table COMMENT
+      columns: true    # push column descriptions -> UC column COMMENTs
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +file_format: delta
+      +schema: marts
+
+seeds:
+  dbt_olist_bundle:
+    +schema: seeds
+
+vars:
+  # used by the incremental fct_orders model
+  start_date: '2016-01-01'

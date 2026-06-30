@@ -1,0 +1,8 @@
+target/
+dbt_packages/
+.venv/
+logs/
+dist/
+
+# custom generic-test macros ({% test %}), not lintable SQL
+src/tests/generic/

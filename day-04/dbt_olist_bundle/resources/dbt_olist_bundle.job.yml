@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    dbt_olist_bundle_job:
+      name: dbt_olist_bundle_job
+      tags:
+        managed_by: dabs
+        data_source: olist                        # merges with target presets.tags
+      schedule:
+        quartz_cron_expression: "0 30 6 * * ?"     # 06:30 — paused for local (development), active for dev/prod
+        timezone_id: Europe/Zurich
+
+      tasks:
+        - task_key: dbt_build
+          job_cluster_key: olist_job_cluster        # dbt CLI runs on this classic job cluster
+          libraries:                                # dbt installed HERE, on the task
+            - pypi:
+                package: "dbt-databricks>=1.12,<2"  # pin to mirror uv.lock (1.12.x); pulls a compatible dbt-core
+          dbt_task:
+            project_directory: ".."                 # up from resources/ to the BUNDLE ROOT (dbt_project.yml lives there)
+            profiles_directory: "."                 # relative to project_directory → bundle root = our profiles.yml
+            commands:
+              - "dbt debug --target ${bundle.target}"   # use the deploy target, NOT the default 'local'
+              - "dbt deps"                              # reads packages.yml; ignores --target
+              - "dbt build --target ${bundle.target}"   # seed + run + snapshot + test (no separate 'dbt seed')
+
+      job_clusters:
+        - job_cluster_key: olist_job_cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12         # current LTS
+            node_type_id: Standard_F4s              # 4 cores, 8 GB
+            num_workers: 0                          # 0 workers = single node
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*]"
+            spark_env_vars:                         # bundle vars → cluster env → dbt profile env_var()
+              DBT_CATALOG:   "${var.catalog}"       # which UC catalog dbt writes to (per target)
+              DBT_HTTP_PATH: "${var.http_path}"     # which SQL warehouse dbt runs the model SQL on
+            custom_tags:
+              ResourceClass: SingleNode
+
+      email_notifications:
+        on_failure: ["data-team@swatchgroup.example"]

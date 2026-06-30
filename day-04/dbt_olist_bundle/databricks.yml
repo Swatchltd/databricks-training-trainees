@@ -1,0 +1,73 @@
+# Declarative Automation Bundle for the Olist dbt project (dbt-only).
+# Targets local / dev / prod share names with the dbt profile targets in profiles.yml,
+# so `dbt ... --target ${bundle.target}` always resolves.
+# Docs: https://docs.databricks.com/dev-tools/bundles/
+bundle:
+  name: dbt_olist_bundle
+
+include:
+  - resources/dbt_olist_bundle.job.yml
+
+# Keep generated / local-only dirs out of the files synced to the workspace on deploy
+# (they're also gitignored; this is explicit belt-and-suspenders).
+sync:
+  exclude:
+    - ".venv/**"
+    - "target/**"
+    - "dbt_packages/**"
+    - "logs/**"
+    - ".databricks/**"
+
+# Values the dbt task reads. catalog + http_path are exported to the dbt task as env vars
+# (DBT_CATALOG / DBT_HTTP_PATH) via the job cluster's spark_env_vars — see the job resource.
+variables:
+  catalog:
+    description: "Unity Catalog catalog dbt writes to"
+    default: "training_${workspace.current_user.short_name}" 
+  http_path:
+    description: "SQL warehouse HTTP path dbt connects to"
+    default: /sql/1.0/warehouses/9fca341663cb3b8b # Personal dev warehouse for training
+
+targets:
+  # local = a developer deploys FROM their laptop and tests ON Databricks (dev workspace).
+  # mode: development → resources prefixed "[dev <you>]", schedule paused, job runs as YOU.
+  local:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-7405611603719107.7.azuredatabricks.net
+    variables:
+      catalog: "training_${workspace.current_user.short_name}"   # YOUR personal catalog → isolated data
+      http_path: /sql/1.0/warehouses/9fca341663cb3b8b
+    presets:
+      name_prefix: "${workspace.current_user.short_name}_"
+      tags:
+        environment: "${bundle.target}"
+        managed_by: dabs
+
+  # dev = shared dev (no prefix), deployed by CI via OAuth M2M (service principal).
+  # mode: production → runs as the DEPLOYING principal (in CI, the M2M service principal). No run_as needed.
+  dev:
+    mode: production
+    workspace:
+      host: https://adb-7405611603719107.7.azuredatabricks.net
+    variables:
+      catalog: "${bundle.target}_olist"
+      http_path: /sql/1.0/warehouses/3e5b6674e311a1ff
+    presets:
+      tags:
+        environment: "${bundle.target}"
+        managed_by: dabs
+
+  # prod = production, deployed by CI via OAuth M2M (service principal).
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-7405611978829763.3.azuredatabricks.net
+    variables:
+      catalog: "${bundle.target}_olist"
+      http_path: /sql/1.0/warehouses/ea4a9df1a720d398
+    presets:
+      tags:
+        environment: "${bundle.target}"
+        managed_by: dabs
