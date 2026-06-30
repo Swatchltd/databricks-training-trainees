@@ -508,3 +508,5 @@ be a **member of the target workspace** with warehouse + UC access — see `CICD
 - [Bundle project templates (dbt-sql)](https://docs.databricks.com/aws/en/dev-tools/bundles/templates) · [dbt integration in bundles](https://deepwiki.com/databricks/bundle-examples/5.3-dbt-integration)
 - [About profiles.yml — lookup order](https://docs.getdbt.com/docs/local/profiles.yml)
 - [Declarative Automation Bundles (renamed from Asset Bundles, Mar 2026)](https://docs.databricks.com/aws/en/dev-tools/bundles/)
+
+Please follow this readme.md to be able to deploy dbt with DABs.
