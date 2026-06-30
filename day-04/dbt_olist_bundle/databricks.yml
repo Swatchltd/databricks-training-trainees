@@ -8,6 +8,16 @@ bundle:
 include:
   - resources/dbt_olist_bundle.job.yml
 
+# Keep generated / local-only dirs out of the files synced to the workspace on deploy
+# (they're also gitignored; this is explicit belt-and-suspenders).
+sync:
+  exclude:
+    - ".venv/**"
+    - "target/**"
+    - "dbt_packages/**"
+    - "logs/**"
+    - ".databricks/**"
+
 # Values the dbt task reads. catalog + http_path are exported to the dbt task as env vars
 # (DBT_CATALOG / DBT_HTTP_PATH) via the job cluster's spark_env_vars — see the job resource.
 variables:
@@ -53,7 +63,7 @@ targets:
   prod:
     mode: production
     workspace:
-      host: https://adb-7405611978829763.3.azuredatabricks.net/
+      host: https://adb-7405611978829763.3.azuredatabricks.net
     variables:
       catalog: "${bundle.target}_olist"
       http_path: /sql/1.0/warehouses/ea4a9df1a720d398
