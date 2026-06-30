@@ -42,8 +42,10 @@ Promotion dev → prod is gated by **GitHub Environment approval** — not git t
 
 ## 2. GitHub side
 
-**Create two environments** — Settings → **Environments** → `dev` and `prod`. On **`prod`**, add
-**required reviewers** so prod deploys wait for approval (the dev→prod gate).
+**Create two environments** — Settings → **Environments** → `dev` and `prod`. On **`prod`** you
+**must add "Required reviewers"** — this is the **manual review before prod**: the `deploy-prod` job
+pauses with a *"Review deployments"* prompt and won't run until a reviewer approves (or rejects it).
+⚠️ If you skip this, prod deploys automatically right after dev, with **no** review.
 
 **Add environment‑scoped secrets** — in each environment (Settings → Environments → `<env>` →
 **Environment secrets**). Same names in both environments, different values; the job's `environment:`
