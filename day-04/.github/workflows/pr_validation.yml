@@ -1,4 +1,9 @@
 name: PR Validation
+# ⚠️ ILLUSTRATIVE COPY — GitHub does NOT run workflows from a nested .github/ folder.
+# The LIVE workflow runs from the repo root: .github/workflows/day04-pr-validation.yml
+# (same content, but working-directory: day-04/dbt_olist_bundle and triggers scoped to that path).
+# This copy is kept next to the bundle for teaching/reference only.
+#
 # On every PR to main: validate the dbt bundle against dev and run SQL code-quality checks.
 # dbt-only — no Python/wheel checks, no Lakeflow.
 on:

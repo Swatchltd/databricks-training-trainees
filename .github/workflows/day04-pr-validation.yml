@@ -50,6 +50,6 @@ jobs:
       - name: Vendor dbt packages (dbt_utils / dbt_expectations)
         run: uv run dbt deps
       - name: SQLFluff lint
-        run: uv run sqlfluff lint src/models
+        run: uv run sqlfluff lint src/models src/tests src/snapshots   # matches local; src/tests/generic is in .sqlfluffignore
       - name: sqlfmt format check
         run: uv run sqlfmt --check .

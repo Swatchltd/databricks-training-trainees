@@ -1,4 +1,9 @@
 name: Deploy
+# ⚠️ ILLUSTRATIVE COPY — GitHub does NOT run workflows from a nested .github/ folder.
+# The LIVE workflow runs from the repo root: .github/workflows/day04-deploy.yml
+# (same content, but working-directory: day-04/dbt_olist_bundle and triggers scoped to that path).
+# This copy is kept next to the bundle for teaching/reference only.
+#
 # Deploy the dbt bundle via GitHub OIDC (no stored secret).
 #   push to main → deploy + run on DEV (automatic)
 #   prod         → same workflow, gated by the 'prod' GitHub Environment (add required reviewers)

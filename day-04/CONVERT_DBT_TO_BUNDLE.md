@@ -473,9 +473,10 @@ project is now the real bundle.
 
 ## 11. CI/CD — deploy dev & prod via GitHub OIDC
 
-Once the bundle deploys/runs by hand, automate it. The workflows live in
-[`day-04/.github/workflows/`](.github/workflows) and the full setup is in
-[`CICD_SETUP.md`](CICD_SETUP.md):
+Once the bundle deploys/runs by hand, automate it. The **runnable** workflows live at the **repo
+root** `.github/workflows/` (`day04-deploy.yml`, `day04-pr-validation.yml`) — GitHub doesn't run a
+nested `.github/`. Illustrative copies sit in [`day-04/.github/workflows/`](.github/workflows) next
+to the bundle; full setup is in [`CICD_SETUP.md`](CICD_SETUP.md):
 
 - **`pr_validation.yml`** — on a PR to `main`: `databricks bundle validate -t dev` + SQLFluff lint + sqlfmt check.
 - **`deploy.yml`** — on push to `main`: deploy + run on **dev**, then **prod** gated by the `prod` GitHub Environment (required reviewers). No git tags / releases.

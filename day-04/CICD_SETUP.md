@@ -1,12 +1,19 @@
 # CI/CD for the dbt bundle — setup
 
-Two GitHub Actions workflows under `.github/workflows/`, **dbt‑only** and **secret‑free** (GitHub
-OIDC / workload‑identity federation). No Python checks, no Lakeflow, no release/versioning.
+Two GitHub Actions workflows, **dbt‑only** and **secret‑free** (GitHub OIDC / workload‑identity
+federation). No Python checks, no Lakeflow, no release/versioning.
 
-| Workflow | Trigger | What it does |
+> **Where the workflows live (important):** GitHub only runs workflows from `.github/workflows/` at
+> the **repo root**. The runnable ones are at the repo root:
+> `.github/workflows/day04-deploy.yml` and `day04-pr-validation.yml` (with
+> `working-directory: day-04/dbt_olist_bundle`, triggers scoped to `day-04/dbt_olist_bundle/**`).
+> The copies under `day-04/.github/workflows/` are **illustrative only** — kept next to the bundle
+> for reference; GitHub does **not** run a nested `.github/`.
+
+| Workflow (repo root) | Trigger | What it does |
 |---|---|---|
-| `pr_validation.yml` | PR to `main` | `databricks bundle validate -t dev` + SQLFluff lint + sqlfmt format check |
-| `deploy.yml` | push to `main` (and manual) | deploy + run on **dev**, then **prod** gated by the `prod` environment |
+| `day04-pr-validation.yml` | PR to `main` touching `day-04/dbt_olist_bundle/**` | `databricks bundle validate -t dev` + SQLFluff lint + sqlfmt format check |
+| `day04-deploy.yml` | push to `main` touching that path (and manual) | deploy + run on **dev**, then **prod** gated by the `prod` environment |
 
 Promotion dev → prod is gated by **GitHub Environment approval** — not git tags or releases.
 
