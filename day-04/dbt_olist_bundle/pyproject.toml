@@ -33,10 +33,11 @@ package = false   # dbt project is not a Python package — do not build a wheel
 templater = "dbt"
 dialect = "databricks"
 max_line_length = 100
-# sqlfmt owns ALL layout/whitespace, so we exclude the ENTIRE layout family (LT01–LT13) here —
-# that's what stops sqlfluff and sqlfmt fighting: format with sqlfmt, then lint with sqlfluff, and
-# sqlfluff never re-flags sqlfmt's output. sqlfluff is left to enforce only *semantic* rules
-# (references, ambiguity, aliasing, structure). (Casing/commas are also aligned to sqlfmt below.)
+# sqlfmt owns ALL layout/whitespace, so we exclude the entire `layout` rule GROUP — that's every
+# LT* rule (LT01–LT14 and any future ones), in one keyword. This is what stops sqlfluff and sqlfmt
+# fighting: format with sqlfmt, then lint with sqlfluff, and sqlfluff never re-flags sqlfmt's output
+# (e.g. an inline `where` on one line). sqlfluff is left to enforce only *semantic* rules
+# (references, ambiguity, aliasing, structure). Casing/commas are also aligned to sqlfmt below.
 #
 # Plus a few NON-layout rules disabled for the deliberate teaching house style:
 #   AL01 - joins use implicit table aliases ("orders o"), taught on purpose.
@@ -46,7 +47,7 @@ max_line_length = 100
 #   RF02 - the incremental "where col > (select max(col) ...)" reads an unqualified col on purpose.
 #   ST02 - "case when ... then true else false end" kept for readability over COALESCE.
 #   AM03 - window ORDER BY mixes a desc tiebreaker with plain cols intentionally.
-exclude_rules = "LT01, LT02, LT03, LT04, LT05, LT06, LT07, LT08, LT09, LT10, LT11, LT12, LT13, AL01, AM05, RF04, ST06, RF02, ST02, AM03"
+exclude_rules = "layout, AL01, AM05, RF04, ST06, RF02, ST02, AM03"
 
 [tool.sqlfluff.indentation]
 indent_unit = "space"
