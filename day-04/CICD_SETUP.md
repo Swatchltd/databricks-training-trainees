@@ -1,14 +1,13 @@
 # CI/CD for the dbt bundle — setup
 
-Two GitHub Actions workflows, **dbt‑only** and **secret‑free** (GitHub OIDC / workload‑identity
-federation). No Python checks, no Lakeflow, no release/versioning.
+Two GitHub Actions workflows, **dbt‑only**, authenticating with **OAuth M2M** — a service‑principal
+**client id + client secret**. No Python checks, no Lakeflow, no release/versioning.
 
 > **Where the workflows live (important):** GitHub only runs workflows from `.github/workflows/` at
-> the **repo root**. The runnable ones are at the repo root:
-> `.github/workflows/day04-deploy.yml` and `day04-pr-validation.yml` (with
-> `working-directory: day-04/dbt_olist_bundle`, triggers scoped to `day-04/dbt_olist_bundle/**`).
-> The copies under `day-04/.github/workflows/` are **illustrative only** — kept next to the bundle
-> for reference; GitHub does **not** run a nested `.github/`.
+> the **repo root**. The runnable ones are `.github/workflows/day04-deploy.yml` and
+> `day04-pr-validation.yml` (with `working-directory: day-04/dbt_olist_bundle`, triggers scoped to
+> `day-04/dbt_olist_bundle/**`). The copies under `day-04/.github/workflows/` are **illustrative
+> only** — GitHub does **not** run a nested `.github/`.
 
 | Workflow (repo root) | Trigger | What it does |
 |---|---|---|
@@ -19,65 +18,71 @@ Promotion dev → prod is gated by **GitHub Environment approval** — not git t
 
 > **Why even the lint job needs dev access:** SQLFluff uses the **dbt templater**, which *compiles*
 > models — and the incremental `fct_orders` checks whether its table exists, so it opens a real
-> warehouse connection. The `sql-lint` job therefore also runs in the `dev` environment, mints a
-> token from the OIDC session (`databricks auth token`), and points dbt at the dev warehouse
-> (read‑only metadata; the tables don't need to exist). So the dev SP's warehouse + `dev_olist`
-> access from §1 is required for PR checks too, not just deploys.
+> warehouse connection. The `sql-lint` job therefore also runs in the `dev` environment, **mints a
+> token from the SP's client credentials** (`client_credentials` grant → `DBT_ACCESS_TOKEN`), and
+> points dbt at the dev warehouse (read‑only metadata; the tables need not exist). So the dev SP's
+> warehouse + `dev_olist` access from §1 is required for PR checks too, not just deploys.
 
 ---
 
 ## 1. Databricks side (per environment: dev, prod)
 
-1. Create a **service principal** (one for dev, one for prod).
-2. Add a **workload‑identity federation policy** to each SP that trusts this GitHub repo and
-   environment, e.g. subject `repo:<org>/<repo>:environment:dev` (and `:environment:prod`).
-   → [Enable workload identity federation for GitHub Actions](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/provider-github)
-3. Grant each SP what the job needs: workspace access, **Unity Catalog** rights on its catalog
-   (`dev_olist` / `prod_olist`), and **CAN USE** on the SQL warehouse.
-4. No client secret is created or stored — OIDC mints a short‑lived token at run time.
+1. Create a **service principal** (one for dev, one for prod) at the **account** level.
+2. **Generate an OAuth secret** for each SP: SP → **Credentials & secrets → OAuth secrets →
+   Generate secret**. Copy the **client id** (the SP's application id) and the **secret** — both go
+   into GitHub (§2). *(M2M uses a stored client secret; this replaces the earlier OIDC /
+   workload‑identity‑federation policy, so there's no federation policy to configure.)*
+3. **Add the SP to the workspace** it deploys to (the one in `databricks.yml`'s `host`, e.g.
+   `7405611603719107` for dev): Account console → **Workspaces → \<workspace\> → Permissions → Add**.
+   *(This is the membership the CLI checks — an account‑level SP can't touch a workspace it isn't a
+   member of. This was the #1 gotcha during setup.)*
+4. Grant each SP what the jobs need: **CAN USE** on the SQL warehouse, and **Unity Catalog** rights
+   on its catalog (`dev_olist` / `prod_olist`) — read is enough for the lint job's relation check,
+   create/write for the deploy job's `dbt build`.
 
 ## 2. GitHub side
 
 **Create two environments** — Settings → **Environments** → `dev` and `prod`. On **`prod`**, add
-**required reviewers** so prod deploys wait for approval (this is the dev→prod gate).
+**required reviewers** so prod deploys wait for approval (the dev→prod gate).
 
 **Add environment‑scoped secrets** — in each environment (Settings → Environments → `<env>` →
-**Environment secrets**). Use the **same names** in both environments with **different values**; a
-job that declares `environment: dev` sees the `dev` values, a job with `environment: prod` sees the
-`prod` values. **No `_DEV`/`_PROD` suffix** — the environment does the scoping:
+**Environment secrets**). Same names in both environments, different values; the job's `environment:`
+selects which set. **No `_DEV`/`_PROD` suffix** — the environment does the scoping:
 
 | Environment | Secret | Value |
 |---|---|---|
-| `dev`  | `DATABRICKS_HOST`      | `https://adb-7405611603719107.7.azuredatabricks.net` |
-| `dev`  | `DATABRICKS_CLIENT_ID` | dev SP application id |
-| `prod` | `DATABRICKS_HOST`      | `https://adb-prod.azuredatabricks.net` |
-| `prod` | `DATABRICKS_CLIENT_ID` | prod SP application id |
+| `dev`  | `DATABRICKS_HOST`          | `https://adb-7405611603719107.7.azuredatabricks.net` |
+| `dev`  | `DATABRICKS_CLIENT_ID`     | dev SP application id |
+| `dev`  | `DATABRICKS_CLIENT_SECRET` | dev SP OAuth secret |
+| `prod` | `DATABRICKS_HOST`          | `https://adb-prod.azuredatabricks.net` |
+| `prod` | `DATABRICKS_CLIENT_ID`     | prod SP application id |
+| `prod` | `DATABRICKS_CLIENT_SECRET` | prod SP OAuth secret |
 
-Both `deploy.yml` and `pr_validation.yml` reference the **same** `${{ secrets.DATABRICKS_HOST }}` /
-`${{ secrets.DATABRICKS_CLIENT_ID }}` — GitHub resolves each to the value from the job's environment.
+> **Secret vs variable:** `DATABRICKS_CLIENT_SECRET` **is** sensitive — keep it a **secret**.
+> `DATABRICKS_HOST` and `DATABRICKS_CLIENT_ID` aren't sensitive (a URL and an app id), so they could
+> be **variables** (`vars.*`, which stay unmasked in logs); we keep all three as environment
+> **secrets** for simplicity and consistent per‑environment scoping.
 
-> **Secret vs variable (a teaching point):** neither value is actually sensitive (a workspace URL and
-> an app id), so they could just as well be **variables** (`vars.*`), which stay **unmasked in logs**
-> and are easier to debug; secrets show as `***`. We use **environment secrets** here to demonstrate
-> environment‑scoped secrets and the dev/prod environments.
+## 3. How auth flows
 
-## 3. How auth flows (important)
-
-- **Deploy auth (CI → workspace):** GitHub OIDC. The workflow sets
-  `DATABRICKS_AUTH_TYPE: github-oidc` + `DATABRICKS_HOST` + `DATABRICKS_CLIENT_ID`, and
-  `permissions: id-token: write` lets the CLI exchange the OIDC token — **no credential secret**
-  (no PAT, no `client_secret`). The host/client‑id we store as environment secrets in §2 are just
-  config, not the auth token.
-- **dbt runtime auth (job → warehouse):** the dbt task runs as a Databricks **job**, so Databricks
-  injects `DBT_HOST` + `DBT_ACCESS_TOKEN` for the run‑as principal (the SP, in `mode: production`).
-  This is **not** configured in CI or in `profiles.yml` beyond reading those injected vars.
+- **Deploy auth (CI → workspace):** **OAuth M2M.** The workflow sets `DATABRICKS_AUTH_TYPE: oauth-m2m`
+  + `DATABRICKS_HOST` + `DATABRICKS_CLIENT_ID` + `DATABRICKS_CLIENT_SECRET`, and the Databricks CLI
+  exchanges the client credentials for a short‑lived OAuth token. (No `id-token: write` permission —
+  that was the OIDC approach.)
+- **dbt in the deployed job (job → warehouse):** the dbt task runs as a Databricks **job**, so
+  Databricks injects `DBT_HOST` + `DBT_ACCESS_TOKEN` for the run‑as principal (the SP, in
+  `mode: production`). Not configured in `profiles.yml` beyond reading those vars.
+- **dbt in the `sql-lint` job (runner → warehouse):** dbt runs *on the GitHub runner*, not as a job,
+  so there's no injected token — the workflow mints one from the SP's client credentials
+  (`curl … grant_type=client_credentials … /oidc/v1/token`) and exports it as `DBT_ACCESS_TOKEN`.
 
 ## 4. Paths / assumptions
 
-- The workflows use `working-directory: dbt_olist_bundle`, i.e. they assume the bundle sits at the
-  **repo root**. If your real repo nests it (e.g. `day-04/dbt_olist_bundle`), update that path.
-- GitHub only runs workflows from `.github/workflows/` at the **repo root**. These files live under
-  `day-04/.github/workflows/` as the training artifact — move them to the repo root in a real repo.
+- The runnable workflows (`day04-*.yml`) sit at the **repo root** `.github/workflows/` with
+  `working-directory: day-04/dbt_olist_bundle`. The copies under `day-04/.github/workflows/` are
+  illustrative and don't run.
+- The `sql-lint` job hardcodes the dev warehouse path (`/sql/1.0/warehouses/3e5b6674e311a1ff`) and
+  `dev_olist` — adjust if yours differ.
 
 ## 5. Local equivalents (for trying the steps by hand)
 
@@ -91,9 +96,9 @@ SQL quality (same as the `sql-lint` job):
 
 ```bash
 uv sync && uv run dbt deps
-uv run sqlfluff lint src/models
+uv run sqlfluff lint src/models src/tests src/snapshots
 uv run sqlfmt --check .
 ```
 
-Sources: [Workload identity federation for GitHub Actions](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/provider-github) ·
+Sources: [Authenticate with OAuth M2M (service principal)](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m) ·
 [GitHub Actions CI/CD for Databricks](https://docs.databricks.com/aws/en/dev-tools/ci-cd/github).

@@ -5,7 +5,7 @@ Python/wheel tasks). It runs locally with `uv run dbt` and deploys to Databricks
 **Job** via `databricks bundle`.
 
 - **How it was built:** [`../CONVERT_DBT_TO_BUNDLE.md`](../CONVERT_DBT_TO_BUNDLE.md)
-- **CI/CD (GitHub OIDC):** [`../CICD_SETUP.md`](../CICD_SETUP.md) + [`../.github/workflows/`](../.github/workflows)
+- **CI/CD (OAuth M2M):** [`../CICD_SETUP.md`](../CICD_SETUP.md) + [`../.github/workflows/`](../.github/workflows)
 - **Editor setup:** [`VSCODE_DBT_SETUP.md`](VSCODE_DBT_SETUP.md) · **Data modelling:** [`DATA_MODELLING.md`](DATA_MODELLING.md)
 
 ```folder
@@ -114,7 +114,7 @@ databricks bundle run dbt_olist_bundle_job -t local
 - **`local`** (`mode: development`) — personal: resources prefixed `[dev <you>]`, schedule paused,
   runs as you, writes to your `training_<you>` catalog. Deploy this from your laptop to test on Databricks.
 - **`dev` / `prod`** (`mode: production`) — shared, no prefix, schedule active, run as the deploying
-  principal (the **OIDC service principal** in CI). Normally deployed by GitHub Actions — see
+  principal (the **M2M service principal** in CI). Normally deployed by GitHub Actions — see
   [`../CICD_SETUP.md`](../CICD_SETUP.md).
 
 **Cleanup:** `databricks bundle destroy -t local` removes your personal `[dev <you>]` job and
@@ -134,9 +134,9 @@ incremental (merge on Delta) · surrogate keys · seeds · generic + custom‑ge
 Config lives in `pyproject.toml`; CI runs the same checks (see `../.github/workflows/pr_validation.yml`):
 
 ```bash
-uv run sqlfluff lint src/models     # lint (gate)
-uv run sqlfluff fix  src/models     # auto-fix
-uv run sqlfmt .                     # format in place
+uv run sqlfmt .                     # 1. format in place — sqlfmt owns layout
+uv run sqlfluff fix  src/models     # 2. auto-fix any semantic findings
+uv run sqlfluff lint src/models     # 3. gate (semantics only; layout rules excluded)
 ```
 
 SQLFluff uses the **dbt templater**, so `dbt_utils.*` / `dbt_expectations.*` / custom macros resolve

@@ -244,8 +244,8 @@ targets:
       tags:
         environment: "${bundle.target}"
         managed_by: dabs
-  dev:                                     # shared dev (no prefix), CI via OIDC
-    mode: production                       # runs as the DEPLOYING principal (the OIDC SP in CI)
+  dev:                                     # shared dev (no prefix), CI via OAuth M2M
+    mode: production                       # runs as the DEPLOYING principal (the M2M SP in CI)
     workspace:
       host: https://adb-<dev>.azuredatabricks.net
     variables:
@@ -271,7 +271,7 @@ targets:
 Why these are the best‑practice choices:
 - **`include` only the active job.** Globbing in a second resource that reuses the job key collides — keep illustrations out, or give them a unique key.
 - **`mode: development` (local) vs `mode: production` (dev/prod).** Development prefixes resources (`[dev <you>]`) and pauses schedules so personal deploys are safe; production deploys clean with active schedules. This is the "**with / without the username prefix**" knob.
-- **`run_as` not set.** `mode: production` runs as the **deploying principal** — in CI that's the **OIDC service principal**; `mode: development` runs as you. Add an explicit `run_as` only to pin a different identity.
+- **`run_as` not set.** `mode: production` runs as the **deploying principal** — in CI that's the **M2M service principal**; `mode: development` runs as you. Add an explicit `run_as` only to pin a different identity. For production targets, also pin `workspace.root_path` to the **service principal** (e.g. `/Workspace/Users/<sp-app-id>/.bundle/${bundle.name}/${bundle.target}`) so every deploy lands in one stable, SP‑owned location instead of a per‑user copy.
 - **`presets.name_prefix` on local** = your short name, so two people deploying `local` never clobber each other; **`presets.tags`** merge with resource‑level tags.
 - **`variables` (`catalog`, `http_path`) per target** are the single source for "where dbt writes" and "which warehouse." The job exports them to the dbt task as `DBT_CATALOG` / `DBT_HTTP_PATH` (§5b), and the profile just reads those — so `local` lands in your personal `training_<you>` catalog, `dev`/`prod` in `dev_olist`/`prod_olist`.
 
@@ -471,26 +471,29 @@ project is now the real bundle.
 
 ---
 
-## 11. CI/CD — deploy dev & prod via GitHub OIDC
+## 11. CI/CD — deploy dev & prod via OAuth M2M
 
 Once the bundle deploys/runs by hand, automate it. The **runnable** workflows live at the **repo
 root** `.github/workflows/` (`day04-deploy.yml`, `day04-pr-validation.yml`) — GitHub doesn't run a
 nested `.github/`. Illustrative copies sit in [`day-04/.github/workflows/`](.github/workflows) next
 to the bundle; full setup is in [`CICD_SETUP.md`](CICD_SETUP.md):
 
-- **`pr_validation.yml`** — on a PR to `main`: `databricks bundle validate -t dev` + SQLFluff lint + sqlfmt check.
+- **`pr_validation.yml`** — on a PR to `main`: `databricks bundle validate -t dev` + sqlfmt check + SQLFluff lint.
 - **`deploy.yml`** — on push to `main`: deploy + run on **dev**, then **prod** gated by the `prod` GitHub Environment (required reviewers). No git tags / releases.
 
-Two auth boundaries, kept separate (this is the part people conflate):
+Three auth boundaries, kept separate (this is the part people conflate):
 
-- **CI → workspace (deploy):** **GitHub OIDC**, secret‑free. The workflow sets
-  `DATABRICKS_AUTH_TYPE: github-oidc` + `DATABRICKS_HOST` + `DATABRICKS_CLIENT_ID` (client id only)
-  and `permissions: id-token: write`; the CLI exchanges the OIDC token. Configured **in the
-  workflow, not `profiles.yml`**.
-- **dbt → warehouse (runtime):** the injected `DBT_HOST`/`DBT_ACCESS_TOKEN` (§4) — the run‑as
-  principal is the OIDC SP in `production` mode.
+- **CI → workspace (deploy):** **OAuth M2M.** The workflow sets `DATABRICKS_AUTH_TYPE: oauth-m2m` +
+  `DATABRICKS_HOST` + `DATABRICKS_CLIENT_ID` + `DATABRICKS_CLIENT_SECRET` (per‑environment secrets);
+  the CLI exchanges the client credentials for a short‑lived token. Configured **in the workflow,
+  not `profiles.yml`**.
+- **dbt in the deployed job (runtime):** the injected `DBT_HOST`/`DBT_ACCESS_TOKEN` (§4) — the
+  run‑as principal is the M2M SP in `production` mode.
+- **dbt in the `sql-lint` job:** dbt runs on the runner, so the workflow mints a token from the SP's
+  `client_credentials` and exports `DBT_ACCESS_TOKEN` (the templater needs a real connection).
 
-dbt‑only by design: **no Python checks, no Lakeflow, no release/versioning** workflow.
+dbt‑only by design: **no Python checks, no Lakeflow, no release/versioning** workflow. (The SP must
+be a **member of the target workspace** with warehouse + UC access — see `CICD_SETUP.md` §1.)
 
 ---
 

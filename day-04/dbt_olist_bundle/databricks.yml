@@ -45,8 +45,8 @@ targets:
         environment: "${bundle.target}"
         managed_by: dabs
 
-  # dev = shared dev (no prefix), deployed by CI via GitHub OIDC.
-  # mode: production → runs as the DEPLOYING principal (in CI, the OIDC service principal). No run_as needed.
+  # dev = shared dev (no prefix), deployed by CI via OAuth M2M (service principal).
+  # mode: production → runs as the DEPLOYING principal (in CI, the M2M service principal). No run_as needed.
   dev:
     mode: production
     workspace:
@@ -59,7 +59,7 @@ targets:
         environment: "${bundle.target}"
         managed_by: dabs
 
-  # prod = production, deployed by CI via GitHub OIDC.
+  # prod = production, deployed by CI via OAuth M2M (service principal).
   prod:
     mode: production
     workspace:

@@ -74,7 +74,7 @@ jobs:
             echo "DBT_HTTP_PATH=/sql/1.0/warehouses/3e5b6674e311a1ff"    # dev SQL warehouse
             echo "DBT_CATALOG=dev_olist"
           } >> "$GITHUB_ENV"
-      - name: SQLFluff lint
-        run: uv run sqlfluff lint src/models src/tests src/snapshots   # matches local; src/tests/generic is in .sqlfluffignore
-      - name: sqlfmt format check
+      - name: sqlfmt format check (BEFORE lint — sqlfmt owns layout)
         run: uv run sqlfmt --check .
+      - name: SQLFluff lint
+        run: uv run sqlfluff lint src/models src/tests src/snapshots   # semantics only; sqlfmt owns layout

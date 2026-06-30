@@ -27,8 +27,7 @@ with
         from orders
     ),
     loc as (
-        select customer_unique_id, customer_state, customer_city from ranked_loc
-where rn = 1  -- exactly one location per customer
+        select customer_unique_id, customer_state, customer_city from ranked_loc where rn = 1  -- exactly one location per customer
     )
 select
     {{ dbt_utils.generate_surrogate_key(['a.customer_unique_id']) }} as customer_sk,

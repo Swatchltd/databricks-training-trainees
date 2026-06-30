@@ -33,20 +33,20 @@ package = false   # dbt project is not a Python package — do not build a wheel
 templater = "dbt"
 dialect = "databricks"
 max_line_length = 100
-# Disable rules that conflict with the deliberate teaching house style:
-#   LT08  - models pack CTEs back-to-back: "),\nnext as (" with NO blank line between them.
-#   LT01  - staging models ALIGN casts/aliases with extra spaces before `as` (readability).
-#   AL01  - joins use implicit table aliases (e.g. "orders o"), taught on purpose.
-#   AM05  - joins spelled "left join" / "inner join" (not force-qualified).
-#   RF04  - column names like `zip_code` shadow no keywords we care about here.
-#   ST06  - select-target ordering is pedagogical (ids first, then attributes).
-#   LT09  - terse one-line CTEs ("select a, b from {{ ref(..) }}") taught for small lookups.
-#   LT02  - Jinja control blocks ({% if is_incremental() %}) carry their own indent.
-#   RF02  - the incremental "where col > (select max(col) ...)" reads an unqualified col on purpose.
-#   ST02  - "case when ... then true else false end" kept for readability over COALESCE.
-#   AM03  - window ORDER BY mixes a desc tiebreaker with plain cols intentionally.
-#   LT05  - long macro calls (generate_category_label / dbt_utils.*) legitimately exceed the width.
-exclude_rules = "LT08, LT01, AL01, AM05, RF04, ST06, LT09, LT02, RF02, ST02, AM03, LT05"
+# sqlfmt owns ALL layout/whitespace, so we exclude the ENTIRE layout family (LT01–LT13) here —
+# that's what stops sqlfluff and sqlfmt fighting: format with sqlfmt, then lint with sqlfluff, and
+# sqlfluff never re-flags sqlfmt's output. sqlfluff is left to enforce only *semantic* rules
+# (references, ambiguity, aliasing, structure). (Casing/commas are also aligned to sqlfmt below.)
+#
+# Plus a few NON-layout rules disabled for the deliberate teaching house style:
+#   AL01 - joins use implicit table aliases ("orders o"), taught on purpose.
+#   AM05 - joins spelled "left join" / "inner join" (not force-qualified).
+#   RF04 - column names like `zip_code` shadow no keywords we care about here.
+#   ST06 - select-target ordering is pedagogical (ids first, then attributes).
+#   RF02 - the incremental "where col > (select max(col) ...)" reads an unqualified col on purpose.
+#   ST02 - "case when ... then true else false end" kept for readability over COALESCE.
+#   AM03 - window ORDER BY mixes a desc tiebreaker with plain cols intentionally.
+exclude_rules = "LT01, LT02, LT03, LT04, LT05, LT06, LT07, LT08, LT09, LT10, LT11, LT12, LT13, AL01, AM05, RF04, ST06, RF02, ST02, AM03"
 
 [tool.sqlfluff.indentation]
 indent_unit = "space"
