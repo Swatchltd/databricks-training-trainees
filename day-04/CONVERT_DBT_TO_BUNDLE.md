@@ -45,7 +45,7 @@ dbt_olist_bundle/
   resources/
     dbt_olist_bundle.job.yml         # the Job: one dbt task on a job cluster (dbt build) — §5b
   dbt_project.yml                    # Day-3 content; name/profile=dbt_olist_bundle; paths → src/
-  profiles.yml                       # SINGLE file: local (PAT) + dev/prod (job) targets
+  profiles.yml                       # SINGLE file: local/dev/prod all read injected/bundle env vars — §4
   packages.yml                       # Day-3 (dbt_utils, dbt_expectations)
   package-lock.yml                   # Day-3 (pinned package versions)
   pyproject.toml  uv.lock  .python-version   # Day-3 local dev via uv (+ sqlfluff/sqlfmt config)
@@ -157,64 +157,44 @@ vars:
 ## 4. Keep ONE `profiles.yml` at the project root (local + job)
 
 This is the key consequence of the "single root profiles.yml" decision. dbt Core looks for
-`profiles.yml` in this order: `--profiles-dir` → **the project root** → `~/.dbt/`. So a file at the
-project root is picked up automatically for **local** dev. We'll make the **same file** serve the
-**deployed job** by giving it `dev`/`prod` targets that use the credentials Databricks injects.
+`profiles.yml` in this order: `--profiles-dir` → **the project root** → `~/.dbt/`, so a file at the
+project root is picked up automatically.
 
-Rename the profile key to `dbt_olist_bundle` and split targets by purpose:
+The same file serves **both** local dev and the deployed job, because **all three targets
+authenticate the same way** — so they share one YAML anchor. What differs per target (catalog,
+warehouse, workspace) is supplied by the bundle (§5), not hardcoded here:
 
 ```yaml
-dbt_olist_bundle:                 # was 'dbt_olist'  (must match dbt_project.yml `profile:`)
-  target: local                   # default = safe local target
-
+dbt_olist_bundle:                 # must match dbt_project.yml `profile:`
+  target: local
   outputs:
-    # ---- LOCAL dev: personal PAT, runs from your laptop ----
-    local:
+    # All three targets authenticate identically, so they share one YAML anchor.
+    local: &databricks
       type: databricks
-      host:      "{{ env_var('DATABRICKS_HOST') }}"        # bare hostname
-      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
-      token:     "{{ env_var('DATABRICKS_TOKEN') }}"       # PAT (local only)
-      catalog:   "training_{{ env_var('DBT_USER') }}"
-      schema:    staging                                   # fallback; +schema sets the rest
-      threads:   4
-
-    # ---- DEPLOYED JOB (dev): Databricks injects DBT_HOST + DBT_ACCESS_TOKEN ----
-    dev:
-      type: databricks
-      host:      "{{ env_var('DBT_HOST') }}"               # injected by the dbt task at runtime
-      token:     "{{ env_var('DBT_ACCESS_TOKEN') }}"       # injected (Run-As principal's OAuth token)
-      http_path: /sql/1.0/warehouses/xxxxxxxxxxxxxxxx      # YOUR SQL warehouse — set explicitly (see note); not a secret
-      catalog:   dev_olist
-      schema:    staging
+      method: http
+      host:      "{{ env_var('DBT_HOST') }}"          # injected in-job; on laptop, set in .env
+      token:     "{{ env_var('DBT_ACCESS_TOKEN') }}"  # injected in-job; on laptop, a PAT in .env
+      http_path: "{{ env_var('DBT_HTTP_PATH') }}"     # supplied by the bundle (spark_env_vars, §5b)
+      catalog:   "{{ env_var('DBT_CATALOG') }}"       # supplied by the bundle (spark_env_vars, §5b)
+      schema:    staging                              # fallback; +schema sets the rest
       threads:   8
-
-    # ---- DEPLOYED JOB (prod): same injection, prod catalog ----
-    prod:
-      type: databricks
-      host:      "{{ env_var('DBT_HOST') }}"
-      token:     "{{ env_var('DBT_ACCESS_TOKEN') }}"
-      http_path: /sql/1.0/warehouses/xxxxxxxxxxxxxxxx      # YOUR SQL warehouse (can be a different one than dev)
-      catalog:   prod_olist
-      schema:    staging
-      threads:   8
+    dev:  *databricks
+    prod: *databricks
 ```
 
-Two things to understand here — they map directly onto the **two CI/CD patterns** in your Day‑3
-README §5:
+Where the four env vars come from:
 
-- **Local** uses a **personal PAT** from `.env` (the "dbt from your laptop" pattern).
-- **dev/prod** are the **"dbt as a Databricks Job"** pattern: you do *not* put any secret in the
-  file. When the dbt task runs, Databricks injects **only** `DBT_HOST` and `DBT_ACCESS_TOKEN` for
-  the job's **Run‑As** principal. (This replaces the Day‑3 service‑principal OAuth block, which was
-  for the *other* pattern — dbt running on a CI runner.)
-- ⚠️ **`http_path` is NOT injected** — only host + token are. So the warehouse path must be set
-  explicitly (it's not a secret). Hardcode it in each target as shown — which is exactly what the
-  init template does — or, to avoid hardcoding, define a bundle variable and pass it to the task as
-  an environment variable. Grab the path from **SQL Warehouses → your warehouse → Connection
-  details** (e.g. `/sql/1.0/warehouses/9fca341663cb3b8b`, the one the init bundle used).
-- `catalog`/`schema`: the `schema:` here is only the fallback. Your `generate_schema_name` macro +
-  per‑layer `+schema` still place models in `staging`/`intermediate`/`marts`; only the **catalog**
-  differs per target. Keep `macros/generate_schema_name.sql` (now in `src/macros/`).
+- **`DBT_HOST` + `DBT_ACCESS_TOKEN` — injected by Databricks**, with *exactly* those names, whenever
+  dbt runs as a **job task** (`DBT_ACCESS_TOKEN` = the run‑as identity's OAuth token). You can't
+  rename them — it's a Databricks convention (the `databricks bundle init dbt-sql` template's
+  `dbt_profiles/profiles.yml` uses the same two).
+- **`DBT_HTTP_PATH` + `DBT_CATALOG` — supplied by the bundle**, not injected. The job cluster's
+  `spark_env_vars` export them per target (§5a sets the values, §5b wires them in). These two names
+  are **arbitrary** — they only have to match between the job and this profile.
+- **Laptop runs:** export all four in `.env` (`DBT_ACCESS_TOKEN` = a PAT), then
+  `uv run dbt --target local` uses the identical profile. (See `.env.example`.)
+- **`schema`** is only the fallback; your `generate_schema_name` macro + per‑layer `+schema` place
+  models in `staging`/`intermediate`/`marts`. Keep `src/macros/generate_schema_name.sql`.
 
 > Because we keep a single root file, **delete the init bundle's `dbt_profiles/` folder** — we won't
 > use it (we repoint the job at the root file in §5).
@@ -226,9 +206,8 @@ README §5:
 `databricks bundle init dbt-sql` gives a *minimal* `databricks.yml` + a single‑task job. Don't ship
 that as‑is — author the two files to the best‑practice shape below (the configuration we built and
 validated in the Day‑4 example bundle). Shown **adapted to our choices**: `src/` layout + a single
-root `profiles.yml`, so the dbt task uses `project_directory: ""` and `profiles_directory: .` (the
-example itself uses split `dbt_profiles/`). The init bundle's files are a fine *starting skeleton* to
-edit into this.
+root `profiles.yml`, so the dbt task uses `project_directory: ".."` and `profiles_directory: .`. The
+init bundle's files are a fine *starting skeleton* to edit into this.
 
 ### 5a. `databricks.yml`
 
@@ -241,53 +220,60 @@ bundle:
 include:
   - resources/dbt_olist_bundle.job.yml
 
+# catalog + http_path are exported to the dbt task as DBT_CATALOG / DBT_HTTP_PATH
+# via the job cluster's spark_env_vars (§5b). They vary per target below.
 variables:
-  service_principal:
-    description: "The OIDC service principal used to deploy the bundle in CI"
-    default: "${env.DATABRICKS_CLIENT_ID}"
-
+  catalog:
+    description: "Unity Catalog catalog dbt writes to"
+    default: "training_${workspace.current_user.short_name}"
+  http_path:
+    description: "SQL warehouse HTTP path dbt connects to"
+    default: /sql/1.0/warehouses/<dev-warehouse-id>
 
 targets:
-  local:                                   # deploy from YOUR laptop; the job runs as YOU
-    mode: development                      # schedule paused; resources prefixed
+  local:                                   # developer deploys FROM laptop; tests ON Databricks
+    mode: development                      # "[dev <you>]" prefix, schedule paused, runs as YOU
     default: true
     workspace:
-      host: https://adb-dev.azuredatabricks.net
+      host: https://adb-<dev>.azuredatabricks.net
+    variables:
+      catalog: "training_${workspace.current_user.short_name}"   # YOUR personal catalog → isolated data
+      http_path: /sql/1.0/warehouses/<dev-warehouse-id>
     presets:
-      name_prefix: "${workspace.current_user.short_name}_"   # personal deploys never collide
-      trigger_pause_status: PAUSED
+      name_prefix: "${workspace.current_user.short_name}_"
       tags:
         environment: "${bundle.target}"
         managed_by: dabs
-    run_as: "${workspace.current_user.userName}"  # run as YOU
-  dev:                                     # prod-like TEST env, deployed by CI (OIDC)
-    mode: production                       # runs as the DEPLOYING principal; schedule active; no prefix
+  dev:                                     # shared dev (no prefix), CI via OIDC
+    mode: production                       # runs as the DEPLOYING principal (the OIDC SP in CI)
     workspace:
-      host: https://adb-dev.azuredatabricks.net
+      host: https://adb-<dev>.azuredatabricks.net
+    variables:
+      catalog: "${bundle.target}_olist"    # → dev_olist
+      http_path: /sql/1.0/warehouses/<dev-warehouse-id>
     presets:
-      trigger_pause_status: UNPAUSED
       tags:
         environment: "${bundle.target}"
         managed_by: dabs
-    # run_as: "<ci-service-principal-app-id>"   # CI deploys/runs as the OIDC service principal
   prod:
     mode: production
     workspace:
-      host: https://adb-prod.azuredatabricks.net   # prod workspace (different from dev)
+      host: https://adb-<prod>.azuredatabricks.net   # prod workspace (different from dev)
+    variables:
+      catalog: "${bundle.target}_olist"    # → prod_olist
+      http_path: /sql/1.0/warehouses/<prod-warehouse-id>
     presets:
-      trigger_pause_status: UNPAUSED
       tags:
         environment: "${bundle.target}"
         managed_by: dabs
-    # run_as: "<ci-service-principal-app-id>"
 ```
 
 Why these are the best‑practice choices:
 - **`include` only the active job.** Globbing in a second resource that reuses the job key collides — keep illustrations out, or give them a unique key.
-- **`mode: development` (local) vs `mode: production` (dev/prod).** Development prefixes resources (`[dev you]`) and pauses schedules so personal deploys are safe; production deploys clean with active schedules.
-- **`run_as`.** `local` pins `run_as: ${workspace.current_user.userName}` so the deployed job — and the `DBT_ACCESS_TOKEN` injected into the dbt task — run as *you*. `dev`/`prod` use `mode: production`, which runs as the **deploying principal** (in CI, the OIDC service principal `DATABRICKS_CLIENT_ID`); leave their `run_as` commented unless you need to pin a specific SP.
-- **`presets.name_prefix` on local** = your short name, so two people deploying `local` never clobber each other; **`presets.tags`** merge with resource‑level tags (cost/ownership attribution).
-- **No `artifacts` / `variables`.** This is a **dbt‑only** bundle: no wheel to build, and the **catalog is owned by the dbt profile** (§4), so the bundle needs no catalog variable — one source of truth, no drift.
+- **`mode: development` (local) vs `mode: production` (dev/prod).** Development prefixes resources (`[dev <you>]`) and pauses schedules so personal deploys are safe; production deploys clean with active schedules. This is the "**with / without the username prefix**" knob.
+- **`run_as` not set.** `mode: production` runs as the **deploying principal** — in CI that's the **OIDC service principal**; `mode: development` runs as you. Add an explicit `run_as` only to pin a different identity.
+- **`presets.name_prefix` on local** = your short name, so two people deploying `local` never clobber each other; **`presets.tags`** merge with resource‑level tags.
+- **`variables` (`catalog`, `http_path`) per target** are the single source for "where dbt writes" and "which warehouse." The job exports them to the dbt task as `DBT_CATALOG` / `DBT_HTTP_PATH` (§5b), and the profile just reads those — so `local` lands in your personal `training_<you>` catalog, `dev`/`prod` in `dev_olist`/`prod_olist`.
 
 ### 5b. `resources/dbt_olist_bundle.job.yml`
 
@@ -313,11 +299,11 @@ resources:
             - pypi:
                 package: dbt-databricks             # pulls a compatible dbt-core automatically
           dbt_task:
-            project_directory: ""                   # bundle root (dbt_project.yml here)
-            profiles_directory: .                   # single root profiles.yml
+            project_directory: ".."                 # up from resources/ to the BUNDLE ROOT (dbt_project.yml lives there)
+            profiles_directory: "."                 # relative to project_directory → bundle root = our profiles.yml
             commands:
-              - "dbt debug"
-              - "dbt deps"                          # deps ignores --target; it just reads packages.yml
+              - "dbt debug --target ${bundle.target}"   # use the deploy target, NOT the default 'local'
+              - "dbt deps"                              # reads packages.yml; ignores --target
               - "dbt build --target ${bundle.target}"
 
       job_clusters:
@@ -325,13 +311,13 @@ resources:
           new_cluster:
             spark_version: 15.4.x-scala2.12       # current LTS
             node_type_id: Standard_F4s            # 4 cores, 8 GB
-            num_workers: 0                        # 0 workers = single node
-            # autoscale:                          # if there is a need for autoscale
-            #   min_workers: 1
-            #   max_workers: 2
+            num_workers: 0                        # single node
             spark_conf:
               spark.databricks.cluster.profile: singleNode
               spark.master: "local[*]"
+            spark_env_vars:                       # bundle vars → cluster env → dbt profile env_var()
+              DBT_CATALOG:   "${var.catalog}"     # which UC catalog dbt writes to (per target)
+              DBT_HTTP_PATH: "${var.http_path}"   # which SQL warehouse runs the model SQL
             custom_tags:
               ResourceClass: SingleNode
 
@@ -340,10 +326,12 @@ resources:
 ```
 
 Why:
+- **`project_directory: ".."`** — paths in a resource file are relative to **that file** (`resources/`), so `..` climbs to the bundle root where `dbt_project.yml` lives. `""` would point at `resources/` and dbt would report *profiles.yml / dbt_project.yml not found*.
 - **Two computes, on purpose** (good slide): the **dbt CLI** runs on the **job cluster**; the **model SQL** it generates runs on the **SQL warehouse** from the profile's `http_path` (*not* a `warehouse_id` on the task).
-- **dbt installed on the task** via `libraries: pypi: dbt-databricks` (which pulls a compatible `dbt-core`). This is the **classic job‑cluster** pattern — no serverless `environments:` block. Your dbt **packages** (`dbt_utils`/`dbt_expectations`) still install at runtime from `dbt deps` (`packages.yml`).
-- **`schedule`** = quartz cron + timezone; `trigger_pause_status` (in `presets`) pauses it for `local` and activates it for `dev`/`prod`.
-- **Commands**: `dbt debug` (connection check) → `dbt deps` (reads `packages.yml`; ignores `--target`) → `dbt build --target ${bundle.target}` — `build` already runs seed + run + snapshot + test, so **no separate `dbt seed`**. (`source freshness`/`docs generate` aren't part of `build`; add them as extra commands if you want them.)
+- **dbt installed on the task** via `libraries: pypi: dbt-databricks` (pulls a compatible `dbt-core`) — the **classic job‑cluster** pattern, no serverless `environments:` block. dbt **packages** (`dbt_utils`/`dbt_expectations`) still install at runtime via `dbt deps` (`packages.yml`).
+- **`spark_env_vars` wire the bundle's per‑target values into dbt:** `DBT_CATALOG` / `DBT_HTTP_PATH` come from `${var.catalog}` / `${var.http_path}` (§5a) and are read by the profile's `env_var()` (§4). (`DBT_HOST`/`DBT_ACCESS_TOKEN` are injected by Databricks — don't set them here.)
+- **`schedule`** = quartz cron + timezone; the target `mode` pauses it for `local` (development) and activates it for `dev`/`prod` (production).
+- **Commands**: `dbt debug --target ${bundle.target}` (connect as the deploy target, not the default `local`) → `dbt deps` (reads `packages.yml`; ignores `--target`) → `dbt build --target ${bundle.target}` — `build` already runs seed + run + snapshot + test, so **no separate `dbt seed`**.
 
 ### 5c. Further reading (not used here)
 
@@ -426,7 +414,7 @@ the `uv …` lines are identical.
 
 ```bash
 # macOS / Linux
-set -a; source .env; set +a          # load DATABRICKS_HOST / HTTP_PATH / TOKEN / DBT_USER
+set -a; source .env; set +a          # load DBT_HOST / DBT_ACCESS_TOKEN / DBT_HTTP_PATH / DBT_CATALOG
 uv sync
 uv run sqlfmt .
 uv run sqlfluff lint src/models src/tests src/snapshots
@@ -445,7 +433,6 @@ uv sync
 uv run sqlfmt .
 uv run sqlfluff lint src/models src/tests src/snapshots
 uv run sqlfluff fix src/models src/tests src/snapshots
-uv run sql
 uv run dbt deps
 uv run dbt build
 ```
@@ -462,8 +449,8 @@ databricks bundle run dbt_olist_bundle_job -t local
 ```
 
 `validate` is the cheap gate — run it after every edit in §3–§8. `run` executes the deployed dbt
-task, where Databricks injects `DBT_HOST`/`DBT_ACCESS_TOKEN` and the `dev` target in `profiles.yml`
-takes over.
+task, where Databricks injects `DBT_HOST`/`DBT_ACCESS_TOKEN`, the cluster's `spark_env_vars` supply
+`DBT_HTTP_PATH`/`DBT_CATALOG`, and the matching profile target (here `local`) takes over.
 
 > ⚠️ **`validate` does not read `profiles.yml` contents.** A placeholder warehouse `http_path`
 > (e.g. `/sql/1.0/warehouses/<dev-warehouse-id>`) passes `validate` but the **`run` fails**. Put a
@@ -481,6 +468,28 @@ mv dbt_olist dbt_olist_bundle_FINAL    # or overwrite the reference init folder,
 
 Keep the original init `dbt_olist_bundle` around only if you want to diff against it; the converted
 project is now the real bundle.
+
+---
+
+## 11. CI/CD — deploy dev & prod via GitHub OIDC
+
+Once the bundle deploys/runs by hand, automate it. The workflows live in
+[`day-04/.github/workflows/`](.github/workflows) and the full setup is in
+[`CICD_SETUP.md`](CICD_SETUP.md):
+
+- **`pr_validation.yml`** — on a PR to `main`: `databricks bundle validate -t dev` + SQLFluff lint + sqlfmt check.
+- **`deploy.yml`** — on push to `main`: deploy + run on **dev**, then **prod** gated by the `prod` GitHub Environment (required reviewers). No git tags / releases.
+
+Two auth boundaries, kept separate (this is the part people conflate):
+
+- **CI → workspace (deploy):** **GitHub OIDC**, secret‑free. The workflow sets
+  `DATABRICKS_AUTH_TYPE: github-oidc` + `DATABRICKS_HOST` + `DATABRICKS_CLIENT_ID` (client id only)
+  and `permissions: id-token: write`; the CLI exchanges the OIDC token. Configured **in the
+  workflow, not `profiles.yml`**.
+- **dbt → warehouse (runtime):** the injected `DBT_HOST`/`DBT_ACCESS_TOKEN` (§4) — the run‑as
+  principal is the OIDC SP in `production` mode.
+
+dbt‑only by design: **no Python checks, no Lakeflow, no release/versioning** workflow.
 
 ---
 

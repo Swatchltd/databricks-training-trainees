@@ -1,0 +1,33 @@
+version: 2
+models:
+  - name: int_order_payments
+    description: "Payments rolled up to one row per order (a reused view, not ephemeral, so it can be queried and tested)."
+    columns:
+      - name: order_id
+        description: "Order grain — one row per order."
+        tests: [not_null, unique]
+      - name: total_paid
+        description: "Sum of payment_value across all payment rows for the order."
+        tests: [not_null]
+      - name: n_payment_rows
+        description: "How many payment rows the order had (installments / split payments)."
+      - name: max_installments
+        description: "Largest installment count seen on the order."
+
+  - name: int_orders_enriched
+    description: "Order-grain enrichment: staging joins + item/payment aggregates + delivery metrics. Materialized as a TABLE because it is reused by both fct_orders and dim_customers."
+    columns:
+      - name: order_id
+        description: "Order grain — one row per order."
+        tests: [not_null, unique]
+      - name: customer_unique_id
+        description: "Persistent customer identity (from stg_customers)."
+      - name: order_total
+        description: "items_total + freight_total."
+        tests: [not_null]
+      - name: is_late
+        description: "1 if delivered after the estimated delivery date, else 0."
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]

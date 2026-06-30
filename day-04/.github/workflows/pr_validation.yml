@@ -1,0 +1,56 @@
+name: PR Validation
+# On every PR to main: validate the dbt bundle against dev and run SQL code-quality checks.
+# dbt-only — no Python/wheel checks, no Lakeflow.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write        # required for GitHub OIDC (workload identity federation)
+  contents: read
+
+jobs:
+  # 1) Bundle validation — needs workspace auth (OIDC), no secret stored.
+  validate:
+    runs-on: ubuntu-latest
+    environment: dev       # federation policy subject: repo:<org>/<repo>:environment:dev
+    defaults:
+      run:
+        working-directory: dbt_olist_bundle   # path to the bundle from the repo root (adjust if nested)
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc                              # OIDC federates to the SP (no token stored)
+      # Environment-scoped SECRETS — resolved from the job's 'dev' environment; same names everywhere.
+      # (Neither is truly sensitive — 'vars.' would also work and stays visible in logs.)
+      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: Validate dbt bundle (dev)
+        run: databricks bundle validate -t dev
+
+  # 2) SQL code quality — SQLFluff lint (gate) + sqlfmt format check.
+  # Tools read their config from pyproject.toml; CI only passes paths. No real Databricks creds:
+  # the dbt templater only PARSES the profile to compile models, so dummy DBT_* env is enough.
+  sql-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dbt_olist_bundle
+    env:
+      DBT_HOST:         dummy.cloud.databricks.com
+      DBT_ACCESS_TOKEN: dummy
+      DBT_HTTP_PATH:    /sql/1.0/warehouses/dummy
+      DBT_CATALOG:      dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install tooling (sqlfluff, sqlfmt, dbt) from pyproject
+        run: uv sync
+      - name: Vendor dbt packages (dbt_utils / dbt_expectations)
+        run: uv run dbt deps
+      - name: SQLFluff lint
+        run: uv run sqlfluff lint src/models
+      - name: sqlfmt format check
+        run: uv run sqlfmt --check .

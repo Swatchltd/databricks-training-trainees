@@ -1,0 +1,23 @@
+# dbt connection profile for the bundle.
+# Target names MATCH the bundle targets (local/dev/prod), so `dbt ... --target ${bundle.target}` resolves.
+# All three authenticate the SAME way when dbt runs as a Databricks job, so they share one YAML anchor:
+#   host + token        -> INJECTED by Databricks at runtime (DBT_HOST / DBT_ACCESS_TOKEN)
+#   http_path + catalog -> supplied per target by the bundle via the job cluster's spark_env_vars
+#                          (DBT_HTTP_PATH / DBT_CATALOG)
+#
+# Running dbt on your LAPTOP instead (uv run dbt)? Export the same four vars in your .env:
+#   DBT_HOST, DBT_ACCESS_TOKEN (a PAT), DBT_HTTP_PATH, DBT_CATALOG  → the identical profile works.
+dbt_olist_bundle:
+  target: local
+  outputs:
+    local: &databricks
+      type: databricks
+      method: http
+      host:      "{{ env_var('DBT_HOST') }}"
+      token:     "{{ env_var('DBT_ACCESS_TOKEN') }}"
+      http_path: "{{ env_var('DBT_HTTP_PATH') }}"
+      catalog:   "{{ env_var('DBT_CATALOG') }}"
+      schema:    staging                 # fallback; per-folder +schema (+ generate_schema_name) sets the rest
+      threads:   8
+    dev:  *databricks
+    prod: *databricks

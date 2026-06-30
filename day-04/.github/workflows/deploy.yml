@@ -1,0 +1,57 @@
+name: Deploy
+# Deploy the dbt bundle via GitHub OIDC (no stored secret).
+#   push to main → deploy + run on DEV (automatic)
+#   prod         → same workflow, gated by the 'prod' GitHub Environment (add required reviewers)
+# Promotion is gated by environment approval — no release tags, no versioning.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write        # required for GitHub OIDC (workload identity federation)
+  contents: read
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    environment: dev       # federation policy subject: repo:<org>/<repo>:environment:dev
+    concurrency: dev       # never deploy dev twice at once
+    defaults:
+      run:
+        working-directory: dbt_olist_bundle   # path to the bundle from the repo root (adjust if nested)
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      # Environment-scoped SECRETS — same names in every environment; GitHub resolves them from the
+      # job's `environment:` (here 'dev'). No _DEV/_PROD suffix needed. (Not truly sensitive, so
+      # 'vars.' would also work and would stay unmasked in logs.)
+      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: Deploy dbt bundle (dev)
+        run: databricks bundle deploy -t dev          # mode: production → runs as the OIDC SP
+      - name: Run dbt job (dev)
+        run: databricks bundle run dbt_olist_bundle_job -t dev
+
+  deploy-prod:
+    needs: deploy-dev      # promote only after dev succeeds
+    runs-on: ubuntu-latest
+    environment: prod      # add required reviewers on this GitHub Environment to gate prod
+    concurrency: prod
+    defaults:
+      run:
+        working-directory: dbt_olist_bundle
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      # Same secret NAMES as dev — GitHub resolves them from the 'prod' environment.
+      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: Deploy dbt bundle (prod)
+        run: databricks bundle deploy -t prod
+      - name: Run dbt job (prod)
+        run: databricks bundle run dbt_olist_bundle_job -t prod

@@ -1,0 +1,65 @@
+version: 2
+sources:
+  - name: olist_landing
+    catalog: "{{ target.catalog }}"  # follows the active target (training_<name> / dev_olist / prod_olist)
+    schema: landing                 # raw managed Delta tables (ingested Day 1/2)
+    description: "Raw Olist Brazilian e-commerce data, landed as managed Delta tables."
+    tables:
+      - name: orders
+        description: "One row per order."
+        config:
+          freshness:
+            warn_after: {count: 24, period: hour}
+          loaded_at_field: order_purchase_timestamp
+        columns:
+          - name: order_id
+            description: "Primary key - one row per order."
+            tests: [not_null, unique]
+      - name: order_items
+        description: "One row per item within an order (multiple per order)."
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: ['order_id','order_item_id']
+        columns:
+          - name: order_id
+            tests: [not_null]
+      - name: order_payments
+        description: "Payment installments per order (multiple per order)."
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: ['order_id','payment_sequential']
+        columns:
+          - name: order_id
+            tests: [not_null]
+      - name: customers
+        description: "Customer per order; customer_unique_id is the persistent identity."
+        columns:
+          - name: customer_id
+            description: "Primary key - per-order customer identifier."
+            tests: [not_null, unique]
+      - name: products
+        description: "Product catalogue; category is in Portuguese."
+        columns:
+          - name: product_id
+            tests: [not_null, unique]
+      - name: product_category_name_translation
+        description: "Portuguese -> English category names."
+        columns:
+          - name: product_category_name
+            tests: [not_null, unique]
+      - name: sellers
+        description: "Seller catalogue (id, city, state). Used by the seller-scorecard business case."
+        columns:
+          - name: seller_id
+            tests: [not_null, unique]
+      - name: order_reviews
+        description: "Customer reviews. review_id is a DIRTY key in Olist: not unique (814 dups) AND the landing table can carry a null (ingestion of multi-line review text). We flag it, not enforce it."
+        columns:
+          - name: review_id
+            description: "Dirty key: not unique, and landing can contain nulls -> warn-severity not_null (surfaces the issue without failing the build). No unique test."
+            tests:
+              - not_null:
+                  config:
+                    severity: warn
