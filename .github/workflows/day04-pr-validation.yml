@@ -1,6 +1,6 @@
 name: Day04 PR Validation
 # On a PR to main that touches the day-04 bundle: validate it against dev + SQL code-quality checks.
-# dbt-only — no Python/wheel checks, no Lakeflow.
+# dbt-only — no Python/wheel checks, no Lakeflow. Auth = OAuth M2M (service-principal client id + secret).
 # NOTE: GitHub only runs workflows from THIS path (repo-root .github/workflows/). The copy under
 # day-04/.github/workflows/ is illustrative and does NOT run.
 on:
@@ -10,21 +10,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write        # required for GitHub OIDC (workload identity federation)
   contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    environment: dev       # federation policy subject: repo:<org>/<repo>:environment:dev
+    environment: dev
     defaults:
       run:
         working-directory: day-04/dbt_olist_bundle   # bundle path from the repo root
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc                              # OIDC federates to the SP (no token stored)
+      DATABRICKS_AUTH_TYPE: oauth-m2m
       # Environment-scoped SECRETS — resolved from the job's 'dev' environment; same names everywhere.
-      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}   # SP OAuth secret
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@main
@@ -33,14 +33,15 @@ jobs:
 
   sql-lint:
     runs-on: ubuntu-latest
-    environment: dev       # gives the OIDC dev secrets — the dbt templater needs a REAL connection
+    environment: dev       # gives the dev secrets — the dbt templater needs a REAL connection
     defaults:
       run:
         working-directory: day-04/dbt_olist_bundle
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc
-      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_AUTH_TYPE: oauth-m2m
+      DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@main
@@ -49,10 +50,10 @@ jobs:
         run: uv sync
       - name: Vendor dbt packages (dbt_utils / dbt_expectations)
         run: uv run dbt deps
-      - name: Resolve dbt connection from the OIDC session
+      - name: Resolve dbt connection (mint token from the M2M creds)
         # SQLFluff's dbt templater compiles models, and incremental models check relation
         # existence — which needs a REAL warehouse connection. Mint a short-lived token from the
-        # OIDC session and point dbt at the dev warehouse (read-only metadata; tables need not exist).
+        # M2M service principal and point dbt at the dev warehouse (read-only metadata; tables need not exist).
         run: |
           {
             echo "DBT_HOST=$(echo "$DATABRICKS_HOST" | sed -E 's#^https?://##; s#/$##')"

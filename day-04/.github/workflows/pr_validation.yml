@@ -5,30 +5,29 @@ name: PR Validation
 # This copy is kept next to the bundle for teaching/reference only.
 #
 # On every PR to main: validate the dbt bundle against dev and run SQL code-quality checks.
-# dbt-only — no Python/wheel checks, no Lakeflow.
+# dbt-only — no Python/wheel checks, no Lakeflow. Auth = OAuth M2M (service-principal client id + secret).
 on:
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  id-token: write        # required for GitHub OIDC (workload identity federation)
   contents: read
 
 jobs:
-  # 1) Bundle validation — needs workspace auth (OIDC), no secret stored.
+  # 1) Bundle validation — needs workspace auth (M2M service principal).
   validate:
     runs-on: ubuntu-latest
-    environment: dev       # federation policy subject: repo:<org>/<repo>:environment:dev
+    environment: dev
     defaults:
       run:
         working-directory: dbt_olist_bundle   # path to the bundle from the repo root (adjust if nested)
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc                              # OIDC federates to the SP (no token stored)
+      DATABRICKS_AUTH_TYPE: oauth-m2m
       # Environment-scoped SECRETS — resolved from the job's 'dev' environment; same names everywhere.
-      # (Neither is truly sensitive — 'vars.' would also work and stays visible in logs.)
-      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}   # SP OAuth secret
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@main
@@ -37,17 +36,18 @@ jobs:
 
   # 2) SQL code quality — SQLFluff lint (gate) + sqlfmt format check.
   # SQLFluff's dbt templater COMPILES models (incremental models check relation existence), so it
-  # needs a REAL warehouse connection — not dummy creds. We reuse the dev OIDC session and mint a token.
+  # needs a REAL warehouse connection. We mint a token from the M2M creds and point dbt at dev.
   sql-lint:
     runs-on: ubuntu-latest
-    environment: dev       # gives the OIDC dev secrets — the dbt templater needs a REAL connection
+    environment: dev       # gives the dev secrets — the dbt templater needs a REAL connection
     defaults:
       run:
         working-directory: dbt_olist_bundle
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc
-      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_AUTH_TYPE: oauth-m2m
+      DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@main
@@ -56,7 +56,7 @@ jobs:
         run: uv sync
       - name: Vendor dbt packages (dbt_utils / dbt_expectations)
         run: uv run dbt deps
-      - name: Resolve dbt connection from the OIDC session
+      - name: Resolve dbt connection (mint token from the M2M creds)
         run: |
           {
             echo "DBT_HOST=$(echo "$DATABRICKS_HOST" | sed -E 's#^https?://##; s#/$##')"

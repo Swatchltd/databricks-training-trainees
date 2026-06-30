@@ -1,5 +1,5 @@
 name: Day04 Deploy
-# Deploy the day-04 dbt bundle via GitHub OIDC (no stored credential secret).
+# Deploy the day-04 dbt bundle via OAuth M2M (service-principal client id + secret).
 #   push to main (touching the bundle) → deploy + run on DEV (automatic)
 #   prod                                → same workflow, gated by the 'prod' GitHub Environment (required reviewers)
 # Promotion is gated by environment approval — no release tags, no versioning.
@@ -12,7 +12,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write        # required for GitHub OIDC (workload identity federation)
   contents: read
 
 jobs:
@@ -24,15 +23,16 @@ jobs:
       run:
         working-directory: day-04/dbt_olist_bundle   # bundle path from the repo root
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_AUTH_TYPE: oauth-m2m
       # Environment-scoped SECRETS — same names in every environment; resolved from `environment: dev`.
-      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}   # SP OAuth secret
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@main
       - name: Deploy dbt bundle (dev)
-        run: databricks bundle deploy -t dev          # mode: production → runs as the OIDC SP
+        run: databricks bundle deploy -t dev          # mode: production → runs as the M2M SP
       - name: Run dbt job (dev)
         run: databricks bundle run dbt_olist_bundle_job -t dev
 
@@ -45,10 +45,11 @@ jobs:
       run:
         working-directory: day-04/dbt_olist_bundle
     env:
-      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_AUTH_TYPE: oauth-m2m
       # Same secret NAMES as dev — resolved from the 'prod' environment.
-      DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@main
