@@ -14,7 +14,7 @@ resources:
           job_cluster_key: olist_job_cluster        # dbt CLI runs on this classic job cluster
           libraries:                                # dbt installed HERE, on the task
             - pypi:
-                package: dbt-databricks             # pulls a compatible dbt-core automatically
+                package: "dbt-databricks>=1.12,<2"  # pin to mirror uv.lock (1.12.x); pulls a compatible dbt-core
           dbt_task:
             project_directory: ".."                 # up from resources/ to the BUNDLE ROOT (dbt_project.yml lives there)
             profiles_directory: "."                 # relative to project_directory → bundle root = our profiles.yml

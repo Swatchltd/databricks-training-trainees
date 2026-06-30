@@ -117,6 +117,9 @@ databricks bundle run dbt_olist_bundle_job -t local
   principal (the **OIDC service principal** in CI). Normally deployed by GitHub Actions — see
   [`../CICD_SETUP.md`](../CICD_SETUP.md).
 
+**Cleanup:** `databricks bundle destroy -t local` removes your personal `[dev <you>]` job and
+resources when you're done, so they don't pile up in the shared dev workspace.
+
 ---
 
 ## Concepts demonstrated
