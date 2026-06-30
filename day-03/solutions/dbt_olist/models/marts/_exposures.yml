@@ -1,0 +1,13 @@
+version: 2
+exposures:
+  - name: olist_executive_dashboard
+    type: dashboard
+    maturity: high
+    url: https://app.powerbi.com/...
+    description: "Power BI executive dashboard: revenue by category and delivery performance."
+    depends_on:
+      - ref('gld_revenue_by_category')
+      - ref('gld_delivery_performance')
+    owner:
+      name: BI Team
+      email: bi@swatchgroup.example

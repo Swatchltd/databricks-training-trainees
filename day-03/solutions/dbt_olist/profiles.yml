@@ -1,0 +1,31 @@
+dbt_olist:
+  target: local                       # default target — safe for training (no accidental prod runs)
+  outputs:                            # development workspace
+    local:                            # training: one Unity Catalog catalog per person - set your personal catalog as training_<name>
+      type: databricks
+      host:      "{{ env_var('DATABRICKS_HOST') }}"        # bare hostname, no https://
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"   # SQL Warehouse > Connection details
+      token:     "{{ env_var('DATABRICKS_TOKEN') }}"       # PAT — local/dev convenience
+      catalog:   "training_{{ env_var('DBT_USER') }}"      # your personal catalog
+      schema:    staging                                   # fallback layer; per-folder +schema sets the rest
+      threads:   4
+    dev:                              # development workspace
+      type: databricks
+      host:      "{{ env_var('DATABRICKS_DEV_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_DEV_HTTP_PATH') }}"
+      auth_type:     oauth                                 # service principal (M2M)
+      client_id:     "{{ env_var('DATABRICKS_DEV_CLIENT_ID') }}"
+      client_secret: "{{ env_var('DATABRICKS_DEV_CLIENT_SECRET') }}"
+      catalog:   dev_olist
+      schema:    staging
+      threads:   8
+    prod:                             # production workspace
+      type: databricks
+      host:      "{{ env_var('DATABRICKS_PROD_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_PROD_HTTP_PATH') }}"
+      auth_type:     oauth                                 # service principal (M2M) — never a personal PAT
+      client_id:     "{{ env_var('DATABRICKS_PROD_CLIENT_ID') }}"
+      client_secret: "{{ env_var('DATABRICKS_PROD_CLIENT_SECRET') }}"
+      catalog:   prod_olist
+      schema:    staging
+      threads:   8
